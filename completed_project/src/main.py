@@ -16,6 +16,7 @@ from src.data_collection import APIClient
 from src.data_processing import TextProcessor
 from src.recommender import ContentBasedRecommender
 from src.evaluation import ModelEvaluator
+from data_collection_google_api import GoogleBooksAPIClient
 
 def load_data(file_path):
     """
@@ -155,6 +156,21 @@ def generate_recommendations(recommender, data, book_title=None, isbn=None, n=5)
         print(f"   ISBN: {book.get('ISBN', 'Unknown')}")
         print()
 
+def collect_data_with_google(input_file, output_file):
+    """
+    Collect data from Google Books API
+    Args:
+        input_file: Path to input CSV file with ISBNs
+        output_file: Path to save Google Books data
+    """
+    print("Starting data collection with Google Books API...")
+    initial_data = load_data(input_file)
+    api_client = GoogleBooksAPIClient()
+    google_data = api_client.augment_dataset(initial_data)
+    save_data(google_data, output_file)
+    print(f"Data collection complete. Google Books data saved to {output_file}")
+    print(f"Shape of Google Books data: {google_data.shape}")
+
 def main():
     """Main function"""
     parser = argparse.ArgumentParser(description='Book Recommendation Engine')
@@ -189,6 +205,10 @@ def main():
     pipeline_parser.add_argument('--title', help='Book title to base recommendations on')
     pipeline_parser.add_argument('--isbn', help='ISBN to base recommendations on')
     pipeline_parser.add_argument('--n', type=int, default=5, help='Number of recommendations to return')
+    
+    # Collect with Google parser
+    collect_google_parser = subparsers.add_parser('collect_with_google', help='Collect data from Google Books API')
+    collect_google_parser.add_argument('--input', required=True, help='Input CSV file with ISBNs')
     
     args = parser.parse_args()
     
@@ -228,6 +248,10 @@ def main():
         # Generate recommendations
         if args.title or args.isbn:
             generate_recommendations(recommender, data, args.title, args.isbn, args.n)
+    
+    elif args.command == 'collect_with_google':
+        output_file = data_dir / 'google_book_data.csv'
+        collect_data_with_google(args.input, output_file)
     
     else:
         parser.print_help()

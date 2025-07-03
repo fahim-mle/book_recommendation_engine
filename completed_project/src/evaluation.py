@@ -35,6 +35,10 @@ class ModelEvaluator:
             data, test_size=test_size, random_state=random_state
         )
         
+        # Reset index to avoid index mismatch errors
+        train_data = train_data.reset_index(drop=True)
+        test_data = test_data.reset_index(drop=True)
+        
         # Fit the recommender on the training data
         recommender.fit(train_data)
         
@@ -63,7 +67,7 @@ class ModelEvaluator:
         
         # 1. Sample a subset of books for evaluation
         sample_size = min(50, len(test_data))
-        sample_books = test_data.sample(sample_size)
+        sample_books = test_data.sample(sample_size).reset_index(drop=True)
         
         # 2. Calculate metrics
         metrics = {
@@ -92,7 +96,7 @@ class ModelEvaluator:
         
         # Sample a subset of books to generate recommendations for
         sample_size = min(20, len(test_data))
-        sample_books = test_data.sample(sample_size)
+        sample_books = test_data.sample(sample_size).reset_index(drop=True)
         
         # Track which books get recommended
         recommended_titles = set()

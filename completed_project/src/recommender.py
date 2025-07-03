@@ -14,16 +14,17 @@ class ContentBasedRecommender:
     
     def __init__(self, vectorizer=None):
         """
-        Initialize the recommender
+        Initialize the recommender.
+        Insight: Zipf's Law - most words in a corpus are either super common (useless) or super rare (noise). The sweet spot is the middle frequencies.
         
         Args:
             vectorizer: Optional custom vectorizer, defaults to TfidfVectorizer
         """
         self.vectorizer = vectorizer if vectorizer else TfidfVectorizer(
-            stop_words='english',
-            max_features=5000,
-            max_df=0.85,
-            min_df=2
+            stop_words='english',   # Theory: Remove noise words
+            max_features=15000,    # Theory: Limit the number of features to reduce noise
+            max_df=0.85,           # Theory: Remove words that appear in more than 85% of documents
+            min_df=2               # Theory: Remove words that appear in less than 2 documents
         )
         self.tfidf_matrix = None
         self.books_df = None
