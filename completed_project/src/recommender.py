@@ -6,6 +6,9 @@ import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from typing import List, Dict, Optional, Union, Any, Tuple
+import os
+import pickle
+import joblib
 
 class ContentBasedRecommender:
     """
@@ -30,12 +33,20 @@ class ContentBasedRecommender:
         self.books_df = None
         self.indices = None
         
+        # Get the script directory for model persistence
+        self.script_dir = os.path.dirname(os.path.abspath(__file__))
+        self.project_dir = os.path.dirname(self.script_dir)
+        self.models_dir = os.path.join(self.project_dir, 'trained_models')
+        
+        # Create models directory if it doesn't exist
+        os.makedirs(self.models_dir, exist_ok=True)
+        
     def fit(self, df: pd.DataFrame) -> None:
         """
         Fit the recommender to the dataset
         
         Args:
-            df: DataFrame with processed book data including 'corpus' column
+            df: DataFrame with processed book data including 'final_corpus' column from engineered data
         """
         # Store the DataFrame for later use
         self.books_df = df.copy()
@@ -58,10 +69,81 @@ class ContentBasedRecommender:
         # Create mapping from book titles to indices
         self.indices = pd.Series(self.books_df.index, index=self.books_df['title']).drop_duplicates()
         
-        # Create TF-IDF matrix
-        self.tfidf_matrix = self.vectorizer.fit_transform(self.books_df['corpus'].fillna(''))
+        # Use the engineered final_corpus if available, otherwise fall back to original corpus
+        corpus_column = 'final_corpus' if 'final_corpus' in self.books_df.columns else 'corpus'
+        
+        if corpus_column not in self.books_df.columns:
+            raise ValueError(f"Neither 'final_corpus' nor 'corpus' column found in the dataset. Available columns: {list(self.books_df.columns)}")
+        
+        print(f"Using '{corpus_column}' column for feature extraction...")
+        
+        # Create TF-IDF matrix using the engineered corpus
+        self.tfidf_matrix = self.vectorizer.fit_transform(self.books_df[corpus_column].fillna(''))
         
         print(f"Fitted recommender with {self.tfidf_matrix.shape[0]} books and {self.tfidf_matrix.shape[1]} features")
+        print(f"Corpus column used: {corpus_column}")
+    
+    def save_model(self, model_name: str = "content_based_recommender") -> str:
+        """
+        Save the trained model to disk
+        
+        Args:
+            model_name: Name for the saved model
+            
+        Returns:
+            Path to the saved model file
+        """
+        if self.tfidf_matrix is None or self.books_df is None:
+            raise ValueError("No trained model to save. Call fit() first.")
+        
+        # Create model data dictionary
+        model_data = {
+            'vectorizer': self.vectorizer,
+            'tfidf_matrix': self.tfidf_matrix,
+            'books_df': self.books_df,
+            'indices': self.indices
+        }
+        
+        # Save model using joblib (better for large numpy arrays)
+        model_path = os.path.join(self.models_dir, f"{model_name}.joblib")
+        joblib.dump(model_data, model_path)
+        
+        print(f"Model saved to: {model_path}")
+        return model_path
+    
+    def load_model(self, model_name: str = "content_based_recommender") -> bool:
+        """
+        Load a trained model from disk
+        
+        Args:
+            model_name: Name of the model to load
+            
+        Returns:
+            True if model loaded successfully, False otherwise
+        """
+        model_path = os.path.join(self.models_dir, f"{model_name}.joblib")
+        
+        if not os.path.exists(model_path):
+            print(f"Model file not found: {model_path}")
+            return False
+        
+        try:
+            # Load model data
+            model_data = joblib.load(model_path)
+            
+            # Restore model components
+            self.vectorizer = model_data['vectorizer']
+            self.tfidf_matrix = model_data['tfidf_matrix']
+            self.books_df = model_data['books_df']
+            self.indices = model_data['indices']
+            
+            print(f"Model loaded successfully from: {model_path}")
+            print(f"Loaded model with {self.tfidf_matrix.shape[0]} books and {self.tfidf_matrix.shape[1]} features")
+            return True
+            
+        except Exception as e:
+            print(f"Error loading model: {e}")
+            return False
     
     def _get_similarity_scores(self, idx: int) -> np.ndarray:
         """
@@ -73,6 +155,9 @@ class ContentBasedRecommender:
         Returns:
             Array of similarity scores
         """
+        if self.tfidf_matrix is None:
+            raise ValueError("Model not fitted. Call fit() or load_model() first.")
+            
         # Make sure idx is within bounds
         if idx < 0 or idx >= self.tfidf_matrix.shape[0]:
             raise IndexError(f"Index {idx} is out of bounds for matrix with shape {self.tfidf_matrix.shape}")
@@ -96,8 +181,8 @@ class ContentBasedRecommender:
         Returns:
             DataFrame with recommended books
         """
-        if self.tfidf_matrix is None or self.books_df is None:
-            raise ValueError("Recommender has not been fitted yet. Call fit() first.")
+        if self.tfidf_matrix is None or self.books_df is None or self.indices is None:
+            raise ValueError("Recommender has not been fitted yet. Call fit() or load_model() first.")
         
         # Check if the book title exists in our dataset
         if book_title not in self.indices:
@@ -141,6 +226,9 @@ class ContentBasedRecommender:
         Returns:
             List of closest matching titles
         """
+        if self.books_df is None:
+            return []
+            
         # Convert query to lowercase for case-insensitive matching
         query = query.lower()
         
@@ -192,7 +280,7 @@ class ContentBasedRecommender:
             DataFrame with recommended books
         """
         if self.books_df is None:
-            raise ValueError("Recommender has not been fitted yet. Call fit() first.")
+            raise ValueError("Recommender has not been fitted yet. Call fit() or load_model() first.")
         
         # Find the book with the given ISBN
         book = self.books_df[self.books_df['ISBN'] == isbn]
@@ -219,7 +307,7 @@ class ContentBasedRecommender:
             DataFrame with recommended books
         """
         if self.books_df is None:
-            raise ValueError("Recommender has not been fitted yet. Call fit() first.")
+            raise ValueError("Recommender has not been fitted yet. Call fit() or load_model() first.")
             
         # Filter books by subject and year level if those columns exist
         filtered_df = self.books_df

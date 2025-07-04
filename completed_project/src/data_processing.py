@@ -1,267 +1,216 @@
-"""
-Data Processing Module - Handles text preprocessing and feature engineering
-"""
 import pandas as pd
 import numpy as np
-import re
-from datetime import datetime
-from typing import Optional, Union, Dict, List, Any
+import os
 
-class TextProcessor:
-    """
-    Handles text preprocessing and feature engineering for book recommendation
-    """
-    
-    def __init__(self):
-        """Initialize the text processor"""
-        pass
-    
-    def preprocess(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Preprocess the data and create features for recommendation engine
-        
-        Args:
-            df: DataFrame with book metadata
-            
-        Returns:
-            DataFrame with processed features
-        """
-        df_features = df.copy()
-        
-        # Check if we have augmented data with Trove API fields
-        has_augmented_data = 'Title' in df.columns
-        
-        # Extract publication year from 'Year' or 'issued'
-        if 'issued' in df.columns:
-            df_features['start_year'] = df_features['issued'].apply(self._extract_year)
-        elif 'Year' in df.columns:
-            df_features['start_year'] = df_features['Year']
-        else:
-            df_features['start_year'] = None
-        
-        # Process author names
-        if 'author' in df.columns:
-            df_features['author_processed'] = df_features['author'].apply(self._process_author)
-        elif 'Contributors' in df.columns:
-            df_features['author_processed'] = df_features['Contributors'].apply(self._process_author)
-        else:
-            df_features['author_processed'] = 'Unknown'
-        
-        # Process book type
-        if 'type' in df.columns:
-            df_features['type_processed'] = df_features['type'].apply(self._process_type)
-        elif 'Type' in df.columns:
-            df_features['type_processed'] = df_features['Type'].apply(self._process_type)
-        else:
-            df_features['type_processed'] = 'Unknown'
-        
-        # Create decade feature
-        df_features['decade'] = df_features['start_year'].apply(self._get_decade)
-        
-        # Create title field if it doesn't exist
-        if 'title' not in df_features.columns and 'Title' in df_features.columns:
-            df_features['title'] = df_features['Title']
-        elif 'title' not in df_features.columns and 'Title' not in df_features.columns:
-            df_features['title'] = 'Unknown'
-        
-        # Create corpus feature (for text analysis later)
-        df_features['corpus'] = df_features.apply(self._create_corpus, axis=1)
-        
-        # Calculate recency score (newer books get higher scores)
-        df_features['recency_score'] = self._calculate_recency_scores(df_features)
-        
-        # Calculate popularity score based on relevance
-        df_features['popularity_score'] = self._calculate_popularity_scores(df_features)
-        
-        return df_features
-    
-    def _extract_year(self, issued_str: Optional[str]) -> Optional[int]:
-        """
-        Extract publication year from 'issued' string
-        
-        Args:
-            issued_str: String containing publication year information
-            
-        Returns:
-            Extracted year as integer or None if not found
-        """
-        if pd.isna(issued_str):
-            return None
-        
-        # Try to find a 4-digit year pattern
-        year_match = re.search(r'\b(1[0-9]{3}|20[0-9]{2})\b', str(issued_str))
-        if year_match:
-            return int(year_match.group(1))
-        
-        return None
-    
-    def _process_author(self, author_str: Optional[str]) -> str:
-        """
-        Process author names to standardized format
-        
-        Args:
-            author_str: Author name string
-            
-        Returns:
-            Standardized author name
-        """
-        if pd.isna(author_str):
-            return "Unknown"
-        
-        # Remove extra spaces and standardize
-        return re.sub(r'\s+', ' ', str(author_str)).strip()
-    
-    def _process_type(self, type_str: Optional[str]) -> str:
-        """
-        Process book type to standardized format
-        
-        Args:
-            type_str: Book type string
-            
-        Returns:
-            Standardized book type
-        """
-        if pd.isna(type_str):
-            return "Unknown"
-        
-        # Standardize book types
-        type_lower = str(type_str).lower()
-        if 'book' in type_lower:
-            if 'illustrated' in type_lower:
-                return "Book/Illustrated"
-            elif 'audio' in type_lower:
-                return "Audio Book"
-            else:
-                return "Book"
-        elif 'article' in type_lower:
-            return "Article"
-        else:
-            return type_str
-    
-    def _get_decade(self, year: Optional[int]) -> Optional[int]:
-        """
-        Get decade from year
-        
-        Args:
-            year: Year as integer
-            
-        Returns:
-            Decade as integer or None
-        """
-        if pd.isna(year):
-            return None
-        
-        try:
-            return int(year) // 10 * 10
-        except (ValueError, TypeError):
-            return None
-    
-    def _create_corpus(self, row: pd.Series) -> str:
-        """
-        Create corpus text from row data for text analysis
-        
-        Args:
-            row: DataFrame row
-            
-        Returns:
-            Combined text corpus
-        """
-        elements = []
-        
-        # Add ISBN as it's the most reliable identifier
-        if not pd.isna(row.get('ISBN')):
-            elements.append(str(row['ISBN']))
-        
-        # Add title if available
-        if not pd.isna(row.get('title')):
-            elements.append(str(row['title']))
-        elif not pd.isna(row.get('Title')):
-            elements.append(str(row['Title']))
-            
-        # Add author if available and not unknown
-        if not pd.isna(row.get('author_processed')) and row.get('author_processed') != "Unknown":
-            elements.append(str(row['author_processed']))
-            
-        # Add type if available and not unknown
-        if not pd.isna(row.get('type_processed')) and row.get('type_processed') != "Unknown":
-            elements.append(str(row['type_processed']))
-        
-        # Add subject if available
-        if not pd.isna(row.get('Subject')):
-            elements.append(str(row['Subject']))
-            
-        # Add subjects from Trove if available
-        if not pd.isna(row.get('Subjects')):
-            elements.append(str(row['Subjects']))
-            
-        # Add abstract if available
-        if not pd.isna(row.get('Abstract')):
-            elements.append(str(row['Abstract']))
-        
-        # Join all elements
-        return ' '.join(elements)
-    
-    def _calculate_recency_scores(self, df: pd.DataFrame) -> pd.Series:
-        """
-        Calculate recency scores (newer books get higher scores)
-        
-        Args:
-            df: DataFrame with start_year column
-            
-        Returns:
-            Series with recency scores
-        """
-        current_year = datetime.now().year
-        
-        # Safely calculate max_age
-        if len(df) == 0 or df['start_year'].count() == 0:
-            max_age = 100  # Default if no valid years
-        else:
-            valid_years = df['start_year'].dropna()
-            if len(valid_years) == 0:
-                max_age = 100  # Default if no valid years
-            else:
-                try:
-                    min_year = valid_years.min()
-                    if pd.isna(min_year):
-                        max_age = 100
-                    else:
-                        max_age = current_year - min_year
-                except:
-                    max_age = 100
-        
-        def calculate_recency(year):
-            if pd.isna(year):
-                return 0.5  # Default value for unknown years
-            try:
-                age = current_year - int(year)
-                # Normalize to 0-1 range, with newer books closer to 1
-                return 1 - (age / max_age) if max_age > 0 else 0.5
-            except (ValueError, TypeError):
-                return 0.5
-        
-        return df['start_year'].apply(calculate_recency)
-    
-    def _calculate_popularity_scores(self, df: pd.DataFrame) -> pd.Series:
-        """
-        Calculate popularity scores based on relevance
-        
-        Args:
-            df: DataFrame with relevance_score column
-            
-        Returns:
-            Series with popularity scores
-        """
-        if 'relevance_score' in df.columns:
-            # Normalize relevance score to 0-1 range
-            max_relevance = df['relevance_score'].max()
-            min_relevance = df['relevance_score'].min()
-            
-            def normalize_relevance(score):
-                if pd.isna(score) or max_relevance == min_relevance:
-                    return 0.5  # Default for unknown or uniform relevance
-                return (score - min_relevance) / (max_relevance - min_relevance)
-            
-            return df['relevance_score'].apply(normalize_relevance)
-        else:
-            return pd.Series([0.5] * len(df))  # Default if relevance_score not available 
+# Get the absolute path to the script's directory
+script_dir = os.path.dirname(os.path.abspath(__file__))
+project_dir = os.path.dirname(script_dir)  # Go up one level to completed_project
+data_dir = os.path.join(project_dir, 'data')
+
+def engineer_educational_features(df):
+   """Enhanced feature engineering for educational textbook recommendations"""
+   df_enhanced = df.copy()
+   
+   # Create weighted educational corpus
+   def create_enhanced_corpus(row):
+       parts = []
+       
+       # Subject gets massive weight (most important)
+       if pd.notna(row['Subject']):
+           subject_clean = str(row['Subject']).lower().strip()
+           parts.extend([subject_clean] * 6)
+       
+       # Year level critical for age-appropriate content
+       if pd.notna(row['Year']):
+           year_terms = f"year {row['Year']} grade {row['Year']} level {row['Year']}"
+           parts.extend([year_terms] * 4)
+       
+       # Google Books categories
+       if pd.notna(row['categories']):
+           categories = str(row['categories']).lower()
+           parts.extend([categories] * 3)
+       
+       # Title (prefer Google Books title, then Trove title, then original title)
+       if pd.notna(row['title_google']) and str(row['title_google']) != 'nan':
+           title = str(row['title_google']).lower()
+       elif pd.notna(row['title']) and str(row['title']) != 'nan':
+           title = str(row['title']).lower()
+       else:
+           title = ""
+       
+       if title:
+           parts.extend([title] * 2)
+       
+       # Publisher crucial for textbooks
+       if pd.notna(row['publisher']) and str(row['publisher']) != 'nan':
+           publisher = str(row['publisher']).lower()
+           parts.append(publisher)
+       
+       # Description from Google Books
+       if pd.notna(row['description']) and str(row['description']) != 'nan':
+           desc = str(row['description'])[:800].lower()
+           parts.append(desc)
+       
+       # Subtitle adds context
+       if pd.notna(row['subtitle']) and str(row['subtitle']) != 'nan':
+           subtitle = str(row['subtitle']).lower()
+           parts.append(subtitle)
+       
+       # Australian curriculum context
+       if pd.notna(row['State']):
+           state_terms = f"australia australian {str(row['State']).lower()}"
+           parts.append(state_terms)
+       
+       # Add Trove corpus if available
+       if pd.notna(row['corpus']) and str(row['corpus']) != 'nan':
+           trove_corpus = str(row['corpus']).lower()
+           parts.append(trove_corpus)
+       
+       # Add authors information
+       if pd.notna(row['authors']) and str(row['authors']) != 'nan':
+           authors = str(row['authors']).lower()
+           parts.append(authors)
+       elif pd.notna(row['author']) and str(row['author']) != 'nan':
+           author = str(row['author']).lower()
+           parts.append(author)
+       
+       return ' '.join(parts)
+   
+   df_enhanced['enhanced_corpus'] = df_enhanced.apply(create_enhanced_corpus, axis=1)
+   
+   # Add subject-specific keywords
+   def add_subject_keywords(subject):
+       if pd.isna(subject):
+           return ""
+       
+       subject = str(subject).upper()
+       keywords = []
+       
+       if any(term in subject for term in ['MATH', 'ALGEBRA', 'CALCULUS', 'GEOMETRY']):
+           keywords = ['mathematics', 'algebra', 'calculus', 'geometry', 'statistics', 'numerical']
+       elif any(term in subject for term in ['SCIENCE', 'BIOLOGY', 'CHEMISTRY', 'PHYSICS']):
+           keywords = ['science', 'biology', 'chemistry', 'physics', 'laboratory', 'scientific']
+       elif 'ENGLISH' in subject:
+           keywords = ['english', 'literature', 'writing', 'reading', 'language', 'literacy']
+       elif 'HISTORY' in subject:
+           keywords = ['history', 'historical', 'social', 'politics', 'civilization']
+       elif any(term in subject for term in ['BUSINESS', 'ECONOMICS']):
+           keywords = ['business', 'economics', 'commerce', 'management', 'finance']
+       elif any(term in subject for term in ['ART', 'MUSIC', 'DRAMA']):
+           keywords = ['arts', 'creative', 'artistic', 'performance', 'visual']
+       
+       return ' '.join(keywords)
+   
+   df_enhanced['subject_keywords'] = df_enhanced['Subject'].apply(add_subject_keywords)
+   
+   # Grade level categorization
+   def categorize_grade_level(year):
+       if pd.isna(year):
+           return "unknown"
+       
+       year = int(year)
+       if year <= 2:
+           return "early_primary foundation prep"
+       elif year <= 6:
+           return "primary elementary"
+       elif year <= 10:
+           return "junior_secondary middle"
+       else:
+           return "senior_secondary vce_hsc"
+   
+   df_enhanced['grade_category'] = df_enhanced['Year'].apply(categorize_grade_level)
+   
+   # Quality scoring
+   def calculate_educational_quality(row):
+       score = 0.5
+       
+       # Recent publications preferred
+       if pd.notna(row['published_date']) and str(row['published_date']) != 'nan':
+           try:
+               pub_year = int(str(row['published_date'])[:4])
+               if pub_year >= 2015:
+                   score += 0.2
+               elif pub_year >= 2010:
+                   score += 0.1
+           except:
+               pass
+       elif pd.notna(row['start_year']) and str(row['start_year']) != 'nan':
+           try:
+               pub_year = int(float(row['start_year']))
+               if pub_year >= 2015:
+                   score += 0.2
+               elif pub_year >= 2010:
+                   score += 0.1
+           except:
+               pass
+       
+       # Google Books ratings
+       if pd.notna(row['average_rating']) and pd.notna(row['ratings_count']) and str(row['average_rating']) != 'nan' and str(row['ratings_count']) != 'nan':
+           try:
+               rating = float(row['average_rating'])
+               count = float(row['ratings_count'])
+               if count >= 10:
+                   score += (rating - 3.0) / 10
+           except:
+               pass
+       
+       # Page count for textbooks
+       if pd.notna(row['page_count']) and str(row['page_count']) != 'nan':
+           try:
+               pages = float(row['page_count'])
+               if 150 <= pages <= 600:
+                   score += 0.1
+           except:
+               pass
+       
+       # Rich description bonus
+       if pd.notna(row['description']) and str(row['description']) != 'nan' and len(str(row['description'])) > 100:
+           score += 0.1
+       
+       # Trove relevance score
+       if pd.notna(row['relevance_score']) and str(row['relevance_score']) != 'nan':
+           try:
+               relevance = float(row['relevance_score'])
+               score += min(0.1, relevance / 10)
+           except:
+               pass
+       
+       # Recency and popularity scores from Trove
+       if pd.notna(row['recency_score']) and str(row['recency_score']) != 'nan':
+           try:
+               recency = float(row['recency_score'])
+               score += recency * 0.05
+           except:
+               pass
+       
+       if pd.notna(row['popularity_score']) and str(row['popularity_score']) != 'nan':
+           try:
+               popularity = float(row['popularity_score'])
+               score += popularity * 0.05
+           except:
+               pass
+       
+       return max(0, min(1, score))
+   
+   df_enhanced['quality_score'] = df_enhanced.apply(calculate_educational_quality, axis=1)
+   
+   # Final comprehensive corpus
+   df_enhanced['final_corpus'] = (
+       df_enhanced['enhanced_corpus'] + ' ' +
+       df_enhanced['subject_keywords'] + ' ' +
+       df_enhanced['grade_category']
+   )
+   
+   return df_enhanced
+
+# Load, process, and save
+input_file = os.path.join(data_dir, 'common_books.csv')
+output_file = os.path.join(data_dir, 'engineered_data.csv')
+
+df = pd.read_csv(input_file)
+df_engineered = engineer_educational_features(df)
+df_engineered.to_csv(output_file, index=False)
+
+print(f"Engineered dataset saved to '{output_file}'")
+print(f"Shape: {df_engineered.shape}")
+print(f"New columns: enhanced_corpus, subject_keywords, grade_category, quality_score, final_corpus")
