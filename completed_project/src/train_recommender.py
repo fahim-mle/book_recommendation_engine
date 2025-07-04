@@ -22,16 +22,25 @@ def train_and_save_recommender():
     project_dir = os.path.dirname(script_dir)
     data_dir = os.path.join(project_dir, 'data')
     
-    # Load engineered data
+    # First check for deduplicated data
+    deduplicated_data_path = os.path.join(data_dir, 'engineered_data_unique.csv')
     engineered_data_path = os.path.join(data_dir, 'engineered_data.csv')
     
-    if not os.path.exists(engineered_data_path):
+    # Use deduplicated data if available, otherwise use regular engineered data
+    if os.path.exists(deduplicated_data_path):
+        data_path = deduplicated_data_path
+        print(f"📖 Using deduplicated data: {deduplicated_data_path}")
+    elif os.path.exists(engineered_data_path):
+        data_path = engineered_data_path
+        print(f"📖 Using engineered data: {engineered_data_path}")
+        print("⚠️ For better results, run deduplicate_data.py first")
+    else:
         print(f"❌ Engineered data not found at: {engineered_data_path}")
         print("Please run data_processing.py first to create engineered_data.csv")
         return False
     
-    print(f"📖 Loading engineered data from: {engineered_data_path}")
-    df = pd.read_csv(engineered_data_path)
+    print(f"📖 Loading data from: {data_path}")
+    df = pd.read_csv(data_path)
     
     print(f"📊 Dataset shape: {df.shape}")
     print(f"📋 Available columns: {list(df.columns)}")
@@ -44,16 +53,22 @@ def train_and_save_recommender():
         print(f"❌ Missing required columns: {missing_columns}")
         return False
     
+    # Check corpus quality
+    empty_corpus = (df['final_corpus'] == '').sum()
+    avg_corpus_length = df['final_corpus'].str.len().mean()
+    print(f"📊 Empty corpus count: {empty_corpus}")
+    print(f"📊 Average corpus length: {avg_corpus_length:.0f} characters")
+    
     # Initialize and train the recommender
     print("🤖 Initializing recommender...")
     recommender = ContentBasedRecommender()
     
-    print("🎯 Training recommender on engineered data...")
+    print("🎯 Training recommender on data...")
     recommender.fit(df)
     
     # Save the trained model
     print("💾 Saving trained model...")
-    model_path = recommender.save_model("content_based_recommender_engineered")
+    model_path = recommender.save_model("content_based_recommender_improved")
     
     print(f"✅ Training completed successfully!")
     print(f"📁 Model saved to: {model_path}")
@@ -85,7 +100,7 @@ def load_and_test_model():
     
     recommender = ContentBasedRecommender()
     
-    if recommender.load_model("content_based_recommender_engineered"):
+    if recommender.load_model("content_based_recommender_improved"):
         print("✅ Model loaded successfully!")
         
         # Test with a sample recommendation

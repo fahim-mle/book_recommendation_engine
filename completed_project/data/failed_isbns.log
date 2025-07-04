@@ -175,3 +175,6 @@
 2025-07-04 01:07:56,981:ERROR:Failed to fetch ISBN 9780170390408 after 3 retries.
 2025-07-04 01:08:56,132:ERROR:Failed to fetch ISBN 9780992585419 after 3 retries.
 2025-07-04 01:09:03,445:ERROR:Failed to fetch ISBN 9780992585426 after 3 retries.
+2025-07-04 17:28:02,448:ERROR:Failed to fetch ISBN 9780141186887 after 3 retries.
+2025-07-04 17:42:58,815:ERROR:Failed to fetch ISBN 9781876918910 after 3 retries.
+2025-07-04 17:43:58,153:ERROR:Failed to fetch ISBN 9780170449090 after 3 retries.

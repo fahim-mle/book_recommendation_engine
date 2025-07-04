@@ -8,7 +8,19 @@ import logging
 from typing import List, Dict, Optional
 
 # --- Setup Logging ---
-logging.basicConfig(filename='data/failed_isbns.log', level=logging.ERROR,
+import os
+
+# Get absolute paths
+script_dir = os.path.dirname(os.path.abspath(__file__))
+project_dir = os.path.dirname(script_dir)
+data_dir = os.path.join(project_dir, 'data')
+
+# Create data directory if it doesn't exist
+os.makedirs(data_dir, exist_ok=True)
+
+# Setup logging with absolute path
+log_path = os.path.join(data_dir, 'failed_isbns.log')
+logging.basicConfig(filename=log_path, level=logging.ERROR,
                     format='%(asctime)s:%(levelname)s:%(message)s')
 
 class APIClient:

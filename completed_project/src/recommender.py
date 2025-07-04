@@ -25,9 +25,10 @@ class ContentBasedRecommender:
         """
         self.vectorizer = vectorizer if vectorizer else TfidfVectorizer(
             stop_words='english',   # Theory: Remove noise words
-            max_features=15000,    # Theory: Limit the number of features to reduce noise
-            max_df=0.85,           # Theory: Remove words that appear in more than 85% of documents
-            min_df=2               # Theory: Remove words that appear in less than 2 documents
+            max_features=5000,     # Theory: Reduced from 15000 to focus on more relevant terms
+            max_df=0.7,            # Theory: More restrictive - ignore terms in >70% of docs (was 0.85)
+            min_df=1,              # Theory: Keep more rare terms (was 2)
+            ngram_range=(1,2)      # Theory: Include bigrams for better context
         )
         self.tfidf_matrix = None
         self.books_df = None
@@ -170,13 +171,65 @@ class ContentBasedRecommender:
         
         return similarity_scores
     
-    def recommend(self, book_title: str, n: int = 5) -> pd.DataFrame:
+    def _find_closest_titles(self, query: str, threshold: float = 0.3) -> List[str]:
+        """
+        Find titles that are closest to the query string
+        
+        Args:
+            query: Search query
+            threshold: Minimum similarity threshold
+            
+        Returns:
+            List of closest title matches
+        """
+        if self.books_df is None:
+            return []
+        
+        # Convert query to lowercase set of characters for fuzzy matching
+        query_chars = set(query.lower())
+        
+        # Calculate character overlap ratio for each title
+        similarities = []
+        for title in self.books_df['title']:
+            if pd.isna(title):
+                similarities.append(0)
+                continue
+            
+            title_chars = set(title.lower())
+            
+            # Skip if either set is empty
+            if len(query_chars) == 0 or len(title_chars) == 0:
+                similarities.append(0)
+                continue
+            
+            # Calculate Jaccard similarity coefficient
+            overlap = len(query_chars.intersection(title_chars))
+            union = len(query_chars.union(title_chars))
+            similarity = overlap / union if union > 0 else 0
+            
+            similarities.append(similarity)
+        
+        # Convert to numpy array for efficient operations
+        similarities = np.array(similarities)
+        
+        # Get indices of titles above threshold, sorted by similarity
+        above_threshold = similarities >= threshold
+        if above_threshold.sum() > 0:
+            indices = np.argsort(similarities)[::-1]
+            above_indices = indices[similarities[indices] >= threshold]
+            closest_titles = self.books_df.iloc[above_indices]['title'].tolist()
+            return closest_titles[:5]  # Return top 5 closest matches
+        
+        return []
+    
+    def recommend(self, book_title: str, n: int = 5, min_similarity: float = 0.1) -> pd.DataFrame:
         """
         Generate book recommendations based on similarity to the given book
         
         Args:
             book_title: Title of the book to base recommendations on
             n: Number of recommendations to return
+            min_similarity: Minimum similarity threshold for recommendations
             
         Returns:
             DataFrame with recommended books
@@ -201,72 +254,20 @@ class ContentBasedRecommender:
         # Get similarity scores
         similarity_scores = self._get_similarity_scores(idx)
         
-        # Get the indices of the top n similar books (excluding the book itself)
-        similar_indices = similarity_scores.argsort()[::-1][1:n+1]
+        # Filter by minimum similarity
+        valid_mask = similarity_scores > min_similarity
+        if valid_mask.sum() <= 1:  # Only query book
+            return pd.DataFrame()  # No good recommendations
         
-        # Get the data for the recommended books
-        recommendations = self.books_df.iloc[similar_indices].copy()
+        # Sort and get top n+1 (including the book itself)
+        sorted_indices = np.argsort(similarity_scores)[::-1]
+        top_indices = sorted_indices[1:n+1]  # Exclude the book itself
         
-        # Add similarity score to the recommendations
-        recommendations['similarity_score'] = similarity_scores[similar_indices]
-        
-        # Sort by similarity score
-        recommendations = recommendations.sort_values('similarity_score', ascending=False)
+        # Create recommendations DataFrame
+        recommendations = self.books_df.iloc[top_indices].copy()
+        recommendations['similarity_score'] = similarity_scores[top_indices]
         
         return recommendations
-    
-    def _find_closest_titles(self, query: str, threshold: float = 0.3) -> List[str]:
-        """
-        Find the closest matching titles for a query
-        
-        Args:
-            query: The search query
-            threshold: Minimum similarity threshold
-            
-        Returns:
-            List of closest matching titles
-        """
-        if self.books_df is None:
-            return []
-            
-        # Convert query to lowercase for case-insensitive matching
-        query = query.lower()
-        
-        # Calculate similarity between query and all titles
-        similarities = []
-        for title in self.books_df['title'].dropna():
-            # Simple string similarity using character overlap
-            title_lower = title.lower()
-            
-            # Calculate Jaccard similarity between character sets
-            query_chars = set(query)
-            title_chars = set(title_lower)
-            
-            if not query_chars or not title_chars:
-                similarities.append(0)
-                continue
-                
-            intersection = len(query_chars.intersection(title_chars))
-            union = len(query_chars.union(title_chars))
-            
-            jaccard = intersection / union if union > 0 else 0
-            
-            # Check if query is a substring of title
-            contains_bonus = 0.3 if query in title_lower else 0
-            
-            # Final similarity score
-            similarity = jaccard + contains_bonus
-            similarities.append(similarity)
-        
-        # Get titles with similarity above threshold
-        titles = self.books_df['title'].dropna().values
-        close_matches = [(titles[i], similarities[i]) for i in range(len(titles)) if similarities[i] >= threshold]
-        
-        # Sort by similarity (descending)
-        close_matches.sort(key=lambda x: x[1], reverse=True)
-        
-        # Return just the titles
-        return [match[0] for match in close_matches]
     
     def get_recommendations_by_isbn(self, isbn: str, n: int = 5) -> pd.DataFrame:
         """

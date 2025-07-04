@@ -29,4 +29,4 @@
 
 **Brutal Honesty:**
 
-This model is only as good as the (limited) data it receives from Trove. Its recommendations are shallow, sometimes arbitrary, and lack true pedagogical or user-centered insight. It is a solid technical baseline, but not a solution for real-world, high-stakes book selection or discovery. For meaningful impact, richer data and more advanced modeling are essential. 
+This model is only as good as the (limited) data it receives from Trove. Its recommendations are shallow, sometimes arbitrary, and lack true pedagogical or user-centered insight. It is a solid technical baseline, but not a solution for real-world, high-stakes book selection or discovery. For meaningful impact, richer data and more advanced modeling are essential.

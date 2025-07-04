@@ -12,10 +12,10 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.append(str(project_root))
 
-from src.data_collection import APIClient
-from src.data_processing import TextProcessor
-from src.recommender import ContentBasedRecommender
-from src.evaluation import ModelEvaluator
+from data_collection import APIClient
+from data_processing import TextProcessor
+from recommender import ContentBasedRecommender
+from evaluation import ModelEvaluator
 from data_collection_google_api import GoogleBooksAPIClient
 
 def load_data(file_path):

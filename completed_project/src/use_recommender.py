@@ -4,6 +4,7 @@ Usage script for the trained content-based book recommender
 import pandas as pd
 import os
 import sys
+import numpy as np
 
 # Add the src directory to the path so we can import our modules
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -21,20 +22,34 @@ def load_and_use_recommender():
     # Initialize recommender
     recommender = ContentBasedRecommender()
     
-    # Load the trained model
+    # Load the trained model - try improved model first, then fall back
     print("🔄 Loading trained model...")
-    if not recommender.load_model("content_based_recommender_engineered"):
-        print("❌ Failed to load model. Please run train_recommender.py first.")
-        return
+    if os.path.exists(os.path.join(recommender.models_dir, "content_based_recommender_improved.joblib")):
+        model_name = "content_based_recommender_improved"
+        if not recommender.load_model(model_name):
+            print("❌ Failed to load improved model. Trying engineered model...")
+            model_name = "content_based_recommender_engineered"
+            if not recommender.load_model(model_name):
+                print("❌ Failed to load model. Please run train_recommender.py first.")
+                return
+    else:
+        model_name = "content_based_recommender_engineered"
+        if not recommender.load_model(model_name):
+            print("❌ Failed to load model. Please run train_recommender.py first.")
+            return
     
     print("✅ Model loaded successfully!")
     print(f"📊 Model contains {len(recommender.books_df)} books")
+    print(f"📊 Model type: {model_name}")
     
     # Show some sample books
     print("\n📖 Sample books in the dataset:")
     sample_books = recommender.books_df[['title', 'Subject', 'Year']].sample(5)
     for i, (_, book) in enumerate(sample_books.iterrows(), 1):
-        print(f"  {i}. {book['title'][:60]}... (Subject: {book['Subject']}, Year: {book['Year']})")
+        # Handle NaN values for Subject and Year
+        subject = book['Subject'] if not pd.isna(book['Subject']) else "Unknown"
+        year = book['Year'] if not pd.isna(book['Year']) else "Unknown"
+        print(f"  {i}. {book['title'][:60]}... (Subject: {subject}, Year: {year})")
     
     # Interactive recommendation demo
     print("\n🎯 RECOMMENDATION DEMO")
@@ -54,13 +69,19 @@ def load_and_use_recommender():
             book_title = input("Enter a book title (or part of it): ").strip()
             if book_title:
                 try:
-                    recommendations = recommender.recommend(book_title, n=5)
-                    print(f"\n🎯 Top 5 recommendations for '{book_title}':")
-                    for i, (_, book) in enumerate(recommendations.iterrows(), 1):
-                        print(f"  {i}. {book['title']}")
-                        print(f"     Subject: {book['Subject']}, Year: {book['Year']}")
-                        print(f"     Similarity: {book['similarity_score']:.3f}")
-                        print()
+                    recommendations = recommender.recommend(book_title, n=5, min_similarity=0.1)
+                    if recommendations.empty:
+                        print(f"\n❌ No good recommendations found for '{book_title}' (similarity too low)")
+                    else:
+                        print(f"\n🎯 Top {len(recommendations)} recommendations for '{book_title}':")
+                        for i, (_, book) in enumerate(recommendations.iterrows(), 1):
+                            # Handle NaN values
+                            subject = book['Subject'] if not pd.isna(book['Subject']) else "Unknown"
+                            year = book['Year'] if not pd.isna(book['Year']) else "Unknown"
+                            print(f"  {i}. {book['title']}")
+                            print(f"     Subject: {subject}, Year: {year}")
+                            print(f"     Similarity: {book['similarity_score']:.3f}")
+                            print()
                 except Exception as e:
                     print(f"❌ Error: {e}")
         
@@ -69,12 +90,18 @@ def load_and_use_recommender():
             if isbn:
                 try:
                     recommendations = recommender.get_recommendations_by_isbn(isbn, n=5)
-                    print(f"\n🎯 Top 5 recommendations for ISBN {isbn}:")
-                    for i, (_, book) in enumerate(recommendations.iterrows(), 1):
-                        print(f"  {i}. {book['title']}")
-                        print(f"     Subject: {book['Subject']}, Year: {book['Year']}")
-                        print(f"     Similarity: {book['similarity_score']:.3f}")
-                        print()
+                    if recommendations.empty:
+                        print(f"\n❌ No good recommendations found for ISBN {isbn}")
+                    else:
+                        print(f"\n🎯 Top {len(recommendations)} recommendations for ISBN {isbn}:")
+                        for i, (_, book) in enumerate(recommendations.iterrows(), 1):
+                            # Handle NaN values
+                            subject = book['Subject'] if not pd.isna(book['Subject']) else "Unknown"
+                            year = book['Year'] if not pd.isna(book['Year']) else "Unknown"
+                            print(f"  {i}. {book['title']}")
+                            print(f"     Subject: {subject}, Year: {year}")
+                            print(f"     Similarity: {book['similarity_score']:.3f}")
+                            print()
                 except Exception as e:
                     print(f"❌ Error: {e}")
         
@@ -84,10 +111,10 @@ def load_and_use_recommender():
                 year = int(input("Enter year level (0-12): ").strip())
                 recommendations = recommender.get_recommendations_for_subject(subject, year, n=5)
                 if not recommendations.empty:
-                    print(f"\n📚 Top 5 {subject} books for Year {year}:")
+                    print(f"\n📚 Top {len(recommendations)} {subject} books for Year {year}:")
                     for i, (_, book) in enumerate(recommendations.iterrows(), 1):
                         print(f"  {i}. {book['title']}")
-                        if 'quality_score' in book:
+                        if 'quality_score' in book and not pd.isna(book['quality_score']):
                             print(f"     Quality Score: {book['quality_score']:.3f}")
                         print()
                 else:
@@ -100,14 +127,21 @@ def load_and_use_recommender():
         elif choice == '4':
             try:
                 random_book = recommender.books_df['title'].sample(1).iloc[0]
-                recommendations = recommender.recommend(random_book, n=5)
-                print(f"\n🎲 Random book: {random_book}")
-                print("🎯 Top 5 similar books:")
-                for i, (_, book) in enumerate(recommendations.iterrows(), 1):
-                    print(f"  {i}. {book['title']}")
-                    print(f"     Subject: {book['Subject']}, Year: {book['Year']}")
-                    print(f"     Similarity: {book['similarity_score']:.3f}")
-                    print()
+                recommendations = recommender.recommend(random_book, n=5, min_similarity=0.1)
+                if recommendations.empty:
+                    print(f"\n❌ No good recommendations found for random book (similarity too low)")
+                    print(f"🎲 Random book: {random_book}")
+                else:
+                    print(f"\n🎲 Random book: {random_book}")
+                    print(f"🎯 Top {len(recommendations)} similar books:")
+                    for i, (_, book) in enumerate(recommendations.iterrows(), 1):
+                        # Handle NaN values
+                        subject = book['Subject'] if not pd.isna(book['Subject']) else "Unknown"
+                        year = book['Year'] if not pd.isna(book['Year']) else "Unknown"
+                        print(f"  {i}. {book['title']}")
+                        print(f"     Subject: {subject}, Year: {year}")
+                        print(f"     Similarity: {book['similarity_score']:.3f}")
+                        print()
             except Exception as e:
                 print(f"❌ Error: {e}")
         
