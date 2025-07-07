@@ -39,17 +39,31 @@ def load_and_use_recommender():
             return
     
     print("✅ Model loaded successfully!")
-    print(f"📊 Model contains {len(recommender.books_df)} books")
+    print(f"📊 Model contains {0 if recommender.books_df is None else len(recommender.books_df)} books")
     print(f"📊 Model type: {model_name}")
     
     # Show some sample books
     print("\n📖 Sample books in the dataset:")
-    sample_books = recommender.books_df[['title', 'Subject', 'Year']].sample(5)
-    for i, (_, book) in enumerate(sample_books.iterrows(), 1):
-        # Handle NaN values for Subject and Year
-        subject = book['Subject'] if not pd.isna(book['Subject']) else "Unknown"
-        year = book['Year'] if not pd.isna(book['Year']) else "Unknown"
-        print(f"  {i}. {book['title'][:60]}... (Subject: {subject}, Year: {year})")
+    try:
+        sample_books = recommender.books_df[['title', 'Subject', 'Year']].sample(5)
+        for i, (_, book) in enumerate(sample_books.iterrows(), 1):
+            # Handle NaN values for title, Subject and Year
+            title = "Unknown title"
+            if pd.notnull(book.get('title')):
+                title = str(book.get('title', ''))
+            title_display = title[:60] + "..." if len(title) > 60 else title
+            
+            subject = "Unknown"
+            if pd.notnull(book.get('Subject')):
+                subject = str(book.get('Subject', ''))
+                
+            year = "Unknown"
+            if pd.notnull(book.get('Year')):
+                year = str(book.get('Year', ''))
+                
+            print(f"  {i}. {title_display} (Subject: {subject}, Year: {year})")
+    except Exception as e:
+        print(f"⚠️ Error displaying sample books: {e}")
     
     # Interactive recommendation demo
     print("\n🎯 RECOMMENDATION DEMO")
@@ -76,9 +90,19 @@ def load_and_use_recommender():
                         print(f"\n🎯 Top {len(recommendations)} recommendations for '{book_title}':")
                         for i, (_, book) in enumerate(recommendations.iterrows(), 1):
                             # Handle NaN values
-                            subject = book['Subject'] if not pd.isna(book['Subject']) else "Unknown"
-                            year = book['Year'] if not pd.isna(book['Year']) else "Unknown"
-                            print(f"  {i}. {book['title']}")
+                            title = "Unknown title"
+                            if pd.notnull(book.get('title')):
+                                title = str(book.get('title', ''))
+                                
+                            subject = "Unknown"
+                            if pd.notnull(book.get('Subject')):
+                                subject = str(book.get('Subject', ''))
+                                
+                            year = "Unknown"
+                            if pd.notnull(book.get('Year')):
+                                year = str(book.get('Year', ''))
+                                
+                            print(f"  {i}. {title}")
                             print(f"     Subject: {subject}, Year: {year}")
                             print(f"     Similarity: {book['similarity_score']:.3f}")
                             print()
@@ -96,9 +120,19 @@ def load_and_use_recommender():
                         print(f"\n🎯 Top {len(recommendations)} recommendations for ISBN {isbn}:")
                         for i, (_, book) in enumerate(recommendations.iterrows(), 1):
                             # Handle NaN values
-                            subject = book['Subject'] if not pd.isna(book['Subject']) else "Unknown"
-                            year = book['Year'] if not pd.isna(book['Year']) else "Unknown"
-                            print(f"  {i}. {book['title']}")
+                            title = "Unknown title"
+                            if pd.notnull(book.get('title')):
+                                title = str(book.get('title', ''))
+                                
+                            subject = "Unknown"
+                            if pd.notnull(book.get('Subject')):
+                                subject = str(book.get('Subject', ''))
+                                
+                            year = "Unknown"
+                            if pd.notnull(book.get('Year')):
+                                year = str(book.get('Year', ''))
+                                
+                            print(f"  {i}. {title}")
                             print(f"     Subject: {subject}, Year: {year}")
                             print(f"     Similarity: {book['similarity_score']:.3f}")
                             print()
@@ -110,15 +144,20 @@ def load_and_use_recommender():
             try:
                 year = int(input("Enter year level (0-12): ").strip())
                 recommendations = recommender.get_recommendations_for_subject(subject, year, n=5)
-                if not recommendations.empty:
+                if recommendations.empty:
+                    print(f"❌ No books found for {subject} at Year {year}")
+                else:
                     print(f"\n📚 Top {len(recommendations)} {subject} books for Year {year}:")
                     for i, (_, book) in enumerate(recommendations.iterrows(), 1):
-                        print(f"  {i}. {book['title']}")
-                        if 'quality_score' in book and not pd.isna(book['quality_score']):
-                            print(f"     Quality Score: {book['quality_score']:.3f}")
+                        # Handle NaN values
+                        title = "Unknown title"
+                        if pd.notnull(book.get('title')):
+                            title = str(book.get('title', ''))
+                            
+                        print(f"  {i}. {title}")
+                        if 'quality_score' in book and pd.notnull(book.get('quality_score')):
+                            print(f"     Quality Score: {book.get('quality_score', 0):.3f}")
                         print()
-                else:
-                    print(f"❌ No books found for {subject} at Year {year}")
             except ValueError:
                 print("❌ Please enter a valid year number")
             except Exception as e:
@@ -126,7 +165,17 @@ def load_and_use_recommender():
         
         elif choice == '4':
             try:
-                random_book = recommender.books_df['title'].sample(1).iloc[0]
+                # Find a non-NaN title for the random book
+                if recommender.books_df is None:
+                    print("❌ No data available")
+                    continue
+                    
+                valid_titles = recommender.books_df.dropna(subset=['title'])
+                if len(valid_titles) == 0:
+                    print("❌ No books with valid titles found in the dataset")
+                    continue
+                    
+                random_book = valid_titles['title'].sample(1).iloc[0]
                 recommendations = recommender.recommend(random_book, n=5, min_similarity=0.1)
                 if recommendations.empty:
                     print(f"\n❌ No good recommendations found for random book (similarity too low)")
@@ -136,9 +185,19 @@ def load_and_use_recommender():
                     print(f"🎯 Top {len(recommendations)} similar books:")
                     for i, (_, book) in enumerate(recommendations.iterrows(), 1):
                         # Handle NaN values
-                        subject = book['Subject'] if not pd.isna(book['Subject']) else "Unknown"
-                        year = book['Year'] if not pd.isna(book['Year']) else "Unknown"
-                        print(f"  {i}. {book['title']}")
+                        title = "Unknown title"
+                        if pd.notnull(book.get('title')):
+                            title = str(book.get('title', ''))
+                            
+                        subject = "Unknown"
+                        if pd.notnull(book.get('Subject')):
+                            subject = str(book.get('Subject', ''))
+                            
+                        year = "Unknown"
+                        if pd.notnull(book.get('Year')):
+                            year = str(book.get('Year', ''))
+                            
+                        print(f"  {i}. {title}")
                         print(f"     Subject: {subject}, Year: {year}")
                         print(f"     Similarity: {book['similarity_score']:.3f}")
                         print()
